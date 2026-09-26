@@ -1,0 +1,13 @@
+{
+  "name": "toy-uint8",
+  "version": "v1",
+  "precision": "uint8",
+  "input_dim": 2,
+  "input_quant": {"scale": 0.25, "zero_point": 0},
+  "layers": [
+    {"name": "fc1", "in_dim": 2, "out_dim": 3, "weight_file": "fc1.bin",
+     "quant": {"scale": 0.1, "zero_point": 128}},
+    {"name": "fc2", "in_dim": 3, "out_dim": 2, "weight_file": "fc2.bin",
+     "quant": {"scale": 0.05, "zero_point": 128}}
+  ]
+}

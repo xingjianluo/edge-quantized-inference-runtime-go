@@ -1,6 +1,8 @@
 package modelpkg
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -154,6 +156,10 @@ func TestLoad_Rejections(t *testing.T) {
 		{"权重多于声明", func(b *pkgBuilder) {
 			b.weightPatches["fc2.bin"] = patch{bytes: make([]byte, 4*2+5)}
 		}, ErrDimMismatch},
+		{"权重校验和不符(内容被改动)", func(b *pkgBuilder) {
+			// 声明一个必然不匹配的校验和，模拟权重内容被改动。
+			b.layers[0]["weight_sha256"] = "0000000000000000000000000000000000000000000000000000000000000000"
+		}, ErrWeightCorrupted},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -181,4 +187,47 @@ func TestSupportedMatrix(t *testing.T) {
 		t.Fatalf("v2 应支持 int8/uint8, got=%v", got)
 	}
 	t.Logf("判定依据: 支持版本=%v，v1精度=%v，v2精度=%v", SupportedVersions(), SupportedPrecisions(V1), got)
+}
+
+// TestLoad_ChecksumAndFingerprint 验证：声明正确校验和的包正常加载；
+// 指纹对同一包确定、对内容不同的包（哪怕结构相同）必然不同。
+func TestLoad_ChecksumAndFingerprint(t *testing.T) {
+	// 与 pkgBuilder 默认权重生成规则一致地计算 fc1 的正确校验和。
+	fc1 := make([]byte, 3*4)
+	for i := range fc1 {
+		fc1[i] = byte((i*7 + 11) % 256)
+	}
+	sum := sha256.Sum256(fc1)
+
+	b := validBuilder()
+	b.layers[0]["weight_sha256"] = hex.EncodeToString(sum[:])
+	pkg, err := Load(b.fs(t), b.effectiveDir())
+	if err != nil {
+		t.Fatalf("校验和正确的包应加载成功: %v", err)
+	}
+	t.Logf("判定依据: fc1 声明正确 sha256 -> 加载成功")
+
+	// 同一内容重复加载：指纹确定。
+	pkg2, err := Load(b.fs(t), b.effectiveDir())
+	if err != nil {
+		t.Fatalf("重复加载失败: %v", err)
+	}
+	if pkg.Fingerprint() != pkg2.Fingerprint() {
+		t.Fatalf("同一包指纹应确定: %s vs %s", pkg.Fingerprint(), pkg2.Fingerprint())
+	}
+
+	// 改动一个权重字节（结构完全不变）：指纹必须不同。
+	b2 := validBuilder()
+	altered := append([]byte(nil), fc1...)
+	altered[0] ^= 0x01
+	b2.weightPatches["fc1.bin"] = patch{bytes: altered}
+	pkg3, err := Load(b2.fs(t), b2.effectiveDir())
+	if err != nil {
+		t.Fatalf("结构相同的改动包应加载成功: %v", err)
+	}
+	if pkg.Fingerprint() == pkg3.Fingerprint() {
+		t.Fatalf("权重被改动的包指纹必须不同: %s", pkg.Fingerprint())
+	}
+	t.Logf("判定依据: 原指纹=%s 改动后指纹=%s（结构相同也可区分）",
+		pkg.Fingerprint()[:16], pkg3.Fingerprint()[:16])
 }

@@ -20,4 +20,6 @@ var (
 	ErrDimMismatch = errors.New("modelpkg: weight dimension mismatch")
 	// ErrPartialWeights 权重文件只包含部分层，禁止部分加载。
 	ErrPartialWeights = errors.New("modelpkg: partial weights")
+	// ErrWeightCorrupted 权重内容与其声明的校验和不一致（内容被改动过）。
+	ErrWeightCorrupted = errors.New("modelpkg: weight checksum mismatch")
 )

@@ -1,10 +1,14 @@
 package modelpkg
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"hash"
 	"io"
 	"io/fs"
+	"strings"
 )
 
 // SupportedVersions 返回运行时支持的模型格式版本。
@@ -61,6 +65,7 @@ func isSupportedPrecision(v Version, p Precision) bool {
 //  6. 量化参数缺失/非法      -> ErrMissingQuantParams
 //  7. 权重缺失/被截断(部分)  -> ErrPartialWeights
 //  8. 权重维度不匹配         -> ErrDimMismatch
+//  9. 权重校验和不一致       -> ErrWeightCorrupted（声明了 weight_sha256 时）
 //
 // 任一失败都不会返回 Package，绝不静默降级或部分加载。
 func Load(ffsys fs.FS, dir string) (*Package, error) {
@@ -82,6 +87,10 @@ func Load(ffsys fs.FS, dir string) (*Package, error) {
 	if err := validateMetadata(meta); err != nil {
 		return nil, err
 	}
+
+	// 指纹覆盖元数据原文与全部权重字节：任何一处内容变动都会改变指纹。
+	fp := sha256.New()
+	fp.Write(data)
 
 	// 逐层读取权重；任何一层失败即整体失败，绝不返回部分权重的包。
 	loaded := make([]LayerSpec, len(meta.Layers))
@@ -110,6 +119,15 @@ func Load(ffsys fs.FS, dir string) (*Package, error) {
 			return nil, fmt.Errorf("%w: layer %q: have %d bytes, want %d",
 				ErrDimMismatch, layer.Name, got, want)
 		}
+		// 声明了校验和则必须逐字节一致：内容被改动过即拒绝。
+		if layer.WeightSHA256 != "" {
+			sum := sha256.Sum256(raw)
+			if !strings.EqualFold(hex.EncodeToString(sum[:]), layer.WeightSHA256) {
+				return nil, fmt.Errorf("%w: layer %q: weight file %s content altered",
+					ErrWeightCorrupted, layer.Name, layer.WeightFile)
+			}
+		}
+		writeFingerprint(fp, raw)
 		if meta.Precision == INT8 {
 			w := make([]int8, want)
 			for j := 0; j < want; j++ {
@@ -127,8 +145,12 @@ func Load(ffsys fs.FS, dir string) (*Package, error) {
 	}
 	meta.Layers = loaded
 
-	return &Package{meta: meta, bytes: totalBytes}, nil
+	return &Package{meta: meta, bytes: totalBytes,
+		fingerprint: hex.EncodeToString(fp.Sum(nil))}, nil
 }
+
+// writeFingerprint 把一层权重字节混入包指纹。
+func writeFingerprint(h hash.Hash, raw []byte) { h.Write(raw) }
 
 // validateMetadata 只做与权重文件无关的结构性与兼容性校验。
 func validateMetadata(meta Metadata) error {

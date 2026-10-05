@@ -25,6 +25,13 @@ func inferOne(model modelView, input []float32) ([]float32, error) {
 		return nil, fmt.Errorf("%w: model requires %d values, got %d",
 			ErrInputDimMismatch, model.inputDim, len(input))
 	}
+	// NaN/±Inf 无法被有意义地量化（量化结果未定义），明确拒绝，
+	// 而不是产出看似正常、实则无意义的数值。
+	for _, x := range input {
+		if math.IsNaN(float64(x)) || math.IsInf(float64(x), 0) {
+			return nil, fmt.Errorf("%w: got %v", ErrInputNotFinite, x)
+		}
+	}
 
 	// 1) 输入量化：q = round(x / s_in) + z_in，饱和到精度值域。
 	prevQ := make([]int32, model.inputDim)

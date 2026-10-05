@@ -4,6 +4,8 @@
 package testutil
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io/fs"
 	"testing"
@@ -20,6 +22,13 @@ type ToySpec struct {
 	LayerZP int32
 	// LayerScale 两层尺度。
 	LayerScale [2]float64
+	// ModelVersion 业务侧模型版本号，写入元数据 model_version。
+	ModelVersion string
+	// SeedOffset 叠加在权重种子上的偏移：不同偏移产出不同权重内容，
+	// 从而得到“结构相同但结果可区分”的不同代模型。
+	SeedOffset byte
+	// WithChecksum 为每层权重写入正确的 weight_sha256（用于防篡改校验路径）。
+	WithChecksum bool
 }
 
 // DefaultToy 返回合法的 v2/int8 玩具模型规格。
@@ -52,32 +61,42 @@ func buildFS(spec ToySpec, dir string) fs.FS {
 	scales := spec.LayerScale
 
 	meta := modelpkg.Metadata{
-		Name:       "toy",
-		Version:    spec.Version,
-		Precision:  spec.Precision,
-		InputDim:   2,
-		InputQuant: modelpkg.QuantParams{Scale: 0.25, ZeroPoint: 0},
+		Name:         "toy",
+		Version:      spec.Version,
+		Precision:    spec.Precision,
+		ModelVersion: spec.ModelVersion,
+		InputDim:     2,
+		InputQuant:   modelpkg.QuantParams{Scale: 0.25, ZeroPoint: 0},
+	}
+	weightBytes := map[string][]byte{}
+	for _, lf := range layers {
+		n := lf.in * lf.out
+		buf := make([]byte, n)
+		for i := 0; i < n; i++ {
+			buf[i] = byte((int(lf.seed) + int(spec.SeedOffset) + i*13) % 256)
+		}
+		weightBytes[lf.name] = buf
 	}
 	for i, lf := range layers {
-		meta.Layers = append(meta.Layers, modelpkg.LayerSpec{
+		layer := modelpkg.LayerSpec{
 			Name:       lf.name[:len(lf.name)-4],
 			InDim:      lf.in,
 			OutDim:     lf.out,
 			WeightFile: lf.name,
 			Quant:      modelpkg.QuantParams{Scale: scales[i], ZeroPoint: spec.LayerZP},
-		})
+		}
+		if spec.WithChecksum {
+			sum := sha256.Sum256(weightBytes[lf.name])
+			layer.WeightSHA256 = hex.EncodeToString(sum[:])
+		}
+		meta.Layers = append(meta.Layers, layer)
 	}
 
 	mfs := fstest.MapFS{}
 	raw, _ := json.Marshal(meta)
 	mfs[dir+"/model.json"] = &fstest.MapFile{Data: raw}
-	for _, lf := range layers {
-		n := lf.in * lf.out
-		buf := make([]byte, n)
-		for i := 0; i < n; i++ {
-			buf[i] = byte((int(lf.seed) + i*13) % 256)
-		}
-		mfs[dir+"/"+lf.name] = &fstest.MapFile{Data: buf}
+	for name, buf := range weightBytes {
+		mfs[dir+"/"+name] = &fstest.MapFile{Data: buf}
 	}
 	return mfs
 }

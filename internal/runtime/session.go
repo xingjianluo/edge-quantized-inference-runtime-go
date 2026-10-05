@@ -52,9 +52,10 @@ func (o SessionOptions) maxBatch(view modelView) int {
 
 // Session 相互隔离的推理会话：持有独立生命周期与错误状态，
 // 不与其他会话共享可变数据（模型权重为只读共享，不影响隔离性）。
+// 会话在创建时绑定到模型的具体一代；之后的在线更新/回退不影响本会话。
 type Session struct {
 	rt    *Runtime
-	model *loadedModel
+	model *generation
 	opts  SessionOptions
 
 	reserve  int64
@@ -202,3 +203,6 @@ func (s *Session) Close() error {
 
 // ModelName 返回会话绑定的模型名（便于日志）。
 func (s *Session) ModelName() string { return s.model.name }
+
+// Generation 返回会话绑定的模型代编号（创建时确定，之后不随在线切换改变）。
+func (s *Session) Generation() int { return s.model.id }

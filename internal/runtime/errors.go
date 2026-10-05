@@ -20,4 +20,8 @@ var (
 	ErrSessionTimeout = errors.New("runtime: session timeout")
 	// ErrSessionBudgetExceeded 会话推理超出其单批资源预算（仅影响自身）。
 	ErrSessionBudgetExceeded = errors.New("runtime: session resource budget exceeded")
+	// ErrNoRollbackTarget 模型没有可回退到的上一个版本。
+	ErrNoRollbackTarget = errors.New("runtime: no rollback target")
+	// ErrInputNotFinite 输入含 NaN 或 ±Inf，无法得到有意义的推理结果，明确拒绝。
+	ErrInputNotFinite = errors.New("runtime: input contains NaN or Inf")
 )

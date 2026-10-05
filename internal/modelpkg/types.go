@@ -52,6 +52,10 @@ type Metadata struct {
 	// InputQuant 为输入特征的量化参数（float -> q8），必须显式给出。
 	InputQuant QuantParams `json:"input_quant"`
 	Layers     []LayerSpec `json:"layers"`
+	// WeightSHA256 可选：weight_file -> 该权重文件原始字节的 SHA-256（小写十六进制）。
+	// 一旦在元数据中声明，加载时必须逐文件核对；不符即 ErrChecksumMismatch。
+	// 在线更新路径要求必须声明，以防推送内容被改动过的权重。
+	WeightSHA256 map[string]string `json:"weight_sha256,omitempty"`
 }
 
 // Package 已通过完整校验、可直接用于推理的模型包。
@@ -61,6 +65,9 @@ type Package struct {
 	meta Metadata
 	// bytes 是该模型包占用的设备内存估算（字节）。
 	bytes int64
+	// revision 是对全部权重原始字节 + 模型结构的内容指纹（SHA-256 十六进制），
+	// 用于区分“版本/精度字符串相同、但权重内容不同”的两代模型。
+	revision string
 }
 
 // Meta 返回元数据只读副本。
@@ -68,3 +75,11 @@ func (p *Package) Meta() Metadata { return p.meta }
 
 // Bytes 返回模型包内存占用估算（字节）。
 func (p *Package) Bytes() int64 { return p.bytes }
+
+// Revision 返回模型包内容指纹：只要权重或结构不同，指纹必然不同。
+// 即使两个包的 version/precision 字符串完全一致也能据此区分。
+func (p *Package) Revision() string { return p.revision }
+
+// HasChecksums 报告该包是否声明了权重校验和。
+// 在线更新只接受带校验和的包；本地直接 Load 旧格式包则保持兼容（可选声明）。
+func (p *Package) HasChecksums() bool { return len(p.meta.WeightSHA256) > 0 }

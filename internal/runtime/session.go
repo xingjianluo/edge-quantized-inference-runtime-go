@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/xingjianluo/edge-quantized-inference-runtime-go/internal/modelpkg"
 )
 
 // SessionOptions 单个会话的预算与超时设置。
@@ -52,10 +54,11 @@ func (o SessionOptions) maxBatch(view modelView) int {
 
 // Session 相互隔离的推理会话：持有独立生命周期与错误状态，
 // 不与其他会话共享可变数据（模型权重为只读共享，不影响隔离性）。
+// 会话在创建时绑定具体一代权重，之后的在线切换/回退不改变该绑定。
 type Session struct {
-	rt    *Runtime
-	model *loadedModel
-	opts  SessionOptions
+	rt   *Runtime
+	gen  *generation
+	opts SessionOptions
 
 	reserve  int64
 	maxBatch int
@@ -104,14 +107,14 @@ func (s *Session) run(ctx context.Context, inputs [][]float32) ([][]float32, err
 		return nil, ErrSessionCanceled
 	}
 	if n > s.maxBatch {
-		need := workspaceBytes(s.model.view, n)
+		need := workspaceBytes(s.gen.view, n)
 		s.mu.Unlock()
 		return nil, fmt.Errorf("%w: batch of %d needs %d bytes, session budget %d bytes",
 			ErrSessionBudgetExceeded, n, need, s.opts.MaxBatchBytes)
 	}
 	s.inflight.Add(1)
 	done := s.done
-	view := s.model.view
+	view := s.gen.view
 	timeout := s.opts.Timeout
 	s.mu.Unlock()
 	defer s.inflight.Done()
@@ -201,4 +204,15 @@ func (s *Session) Close() error {
 }
 
 // ModelName 返回会话绑定的模型名（便于日志）。
-func (s *Session) ModelName() string { return s.model.name }
+func (s *Session) ModelName() string { return s.gen.entry.name }
+
+// Revision 返回会话当前使用的权重代的内容指纹。
+// 由于会话绑定创建时的一代，切换前建的旧会话与切换后建的新会话
+// 返回的指纹不同，可直接用于判定“结果来自哪一代权重”。
+func (s *Session) Revision() string { return s.gen.pkg.Revision() }
+
+// FormatVersion 返回会话绑定代的模型格式版本字符串。
+func (s *Session) FormatVersion() modelpkg.Version { return s.gen.pkg.Meta().Version }
+
+// Precision 返回会话绑定代的量化精度。
+func (s *Session) Precision() modelpkg.Precision { return s.gen.pkg.Meta().Precision }

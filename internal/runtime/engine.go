@@ -25,6 +25,14 @@ func inferOne(model modelView, input []float32) ([]float32, error) {
 		return nil, fmt.Errorf("%w: model requires %d values, got %d",
 			ErrInputDimMismatch, model.inputDim, len(input))
 	}
+	for i, x := range input {
+		// NaN 无法量化为确定整数，Inf 会被静默饱和到量程端点：
+		// 二者都只会产出“看起来正常、其实没有意义”的数值，明确拒绝。
+		if isNonFinite(x) {
+			return nil, fmt.Errorf("%w: input[%d]=%v is NaN or +/-Inf",
+				ErrInvalidInput, i, x)
+		}
+	}
 
 	// 1) 输入量化：q = round(x / s_in) + z_in，饱和到精度值域。
 	prevQ := make([]int32, model.inputDim)
@@ -176,6 +184,12 @@ func clampQ(q float64, unsigned bool) int32 {
 		return 127
 	}
 	return v
+}
+
+// isNonFinite 判定 float32 是否为 NaN 或正负无穷（无意义输入）。
+func isNonFinite(x float32) bool {
+	v := float64(x)
+	return math.IsNaN(v) || math.IsInf(v, 0)
 }
 
 // workspaceBytes 估算 batchSize 条推理的会话工作区字节数（确定性记账口径）：

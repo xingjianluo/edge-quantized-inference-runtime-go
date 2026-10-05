@@ -1,0 +1,36 @@
+{
+  "name": "bad-update-tampered",
+  "version": "v2",
+  "precision": "int8",
+  "input_dim": 2,
+  "input_quant": {
+    "scale": 0.25,
+    "zero_point": 0
+  },
+  "layers": [
+    {
+      "name": "fc1",
+      "in_dim": 2,
+      "out_dim": 3,
+      "weight_file": "fc1.bin",
+      "quant": {
+        "scale": 0.1,
+        "zero_point": 0
+      }
+    },
+    {
+      "name": "fc2",
+      "in_dim": 3,
+      "out_dim": 2,
+      "weight_file": "fc2.bin",
+      "quant": {
+        "scale": 0.05,
+        "zero_point": 0
+      }
+    }
+  ],
+  "weight_sha256": {
+    "fc1.bin": "2c4d3aff41d6a62dfe2b69bf65ef98efaf32efb430076ee6629a95e8547e2f2c",
+    "fc2.bin": "2fa46bcc9c9d00ac424604d776d6e14c086aa75113e6e8757899a594e4c53b45"
+  }
+}

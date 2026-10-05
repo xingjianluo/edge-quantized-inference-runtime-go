@@ -1,0 +1,36 @@
+{
+  "name": "toy-int8-v2",
+  "version": "v2",
+  "precision": "int8",
+  "input_dim": 2,
+  "input_quant": {
+    "scale": 0.25,
+    "zero_point": 0
+  },
+  "layers": [
+    {
+      "name": "fc1",
+      "in_dim": 2,
+      "out_dim": 3,
+      "weight_file": "fc1.bin",
+      "quant": {
+        "scale": 0.1,
+        "zero_point": 0
+      }
+    },
+    {
+      "name": "fc2",
+      "in_dim": 3,
+      "out_dim": 2,
+      "weight_file": "fc2.bin",
+      "quant": {
+        "scale": 0.05,
+        "zero_point": 0
+      }
+    }
+  ],
+  "weight_sha256": {
+    "fc1.bin": "8e1d263cff3ef1a6ff70ec2cab4a052298f1b44e8637fcbf043be7d0778b66e2",
+    "fc2.bin": "c068347d39ec69189f299a0b6900b2a1bf46f606dd6d775e0463f511dacd9b1a"
+  }
+}

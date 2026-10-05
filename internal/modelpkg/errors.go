@@ -20,4 +20,8 @@ var (
 	ErrDimMismatch = errors.New("modelpkg: weight dimension mismatch")
 	// ErrPartialWeights 权重文件只包含部分层，禁止部分加载。
 	ErrPartialWeights = errors.New("modelpkg: partial weights")
+	// ErrChecksumMismatch 权重文件内容与元数据声明的校验和不符（内容被改动过）。
+	ErrChecksumMismatch = errors.New("modelpkg: weight checksum mismatch")
+	// ErrChecksumRequired 在线更新要求模型包必须显式声明全部权重的校验和。
+	ErrChecksumRequired = errors.New("modelpkg: weight checksum required for online update")
 )
